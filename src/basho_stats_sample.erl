@@ -22,6 +22,7 @@
 -module(basho_stats_sample).
 
 -export([new/0,
+         new/5,
          update/2, update_all/2,
          count/1,
          min/1, mean/1, max/1,
@@ -47,7 +48,14 @@
 
 new() ->
     #state{}.
-    
+
+new(N, Min, Max, Sum, Sum2) ->
+    #state { n = N,
+             min = Min,
+             max = Max,
+             sum = Sum,
+             sum2 = Sum2 }.
+
 update(Value, State) ->
     State#state {
       n   = State#state.n + 1,

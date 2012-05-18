@@ -26,7 +26,8 @@
          quantile/2,
          counts/1,
          observations/1,
-         summary_stats/1]).
+         summary_stats/1,
+         merge/1]).
 
 -ifdef(EQC).
 -export([prop_count/0, prop_quantile/0]).
@@ -42,6 +43,13 @@
                 bins,
                 capacity,
                 stats }).
+
+%% copy and pasted from basho_stats_sample
+-record(state, { n = 0,
+                 min = 'NaN',
+                 max = 'NaN',
+                 sum  = 0,
+                 sum2 = 0 }).
 
 %% ===================================================================
 %% Public API
@@ -126,6 +134,35 @@ observations(Hist) ->
 summary_stats(Hist) ->
     basho_stats_sample:summary(Hist#hist.stats).
 
+%%
+%% Create a histogram merging the histograms in a list.
+%% It is expected that all histograms have the same MinVal, MaxVal and
+%% NumBins, unexpected results may happen otherwise.
+%% 
+merge(Hists) ->
+    [Hist1|HistRest] = Hists,
+    MinVal = Hist1#hist.min,
+    MaxVal = Hist1#hist.max,
+    NumBins = Hist1#hist.capacity,
+
+    CountsSum =
+        lists:foldl(fun(H, Cs) ->
+                        lists:zipwith(fun(X, Y) -> X + Y end, counts(H), Cs)
+                    end, counts(Hist1), HistRest),
+    Dict = lists:zip(lists:seq(0, NumBins - 1), CountsSum),
+
+    Stats = basho_stats_sample:new(
+        lists:sum([H#hist.stats#state.n || H <- Hists]),
+        lists:min([H#hist.stats#state.min || H <- Hists]),
+        lists:max([H#hist.stats#state.max || H <- Hists]),
+        lists:sum([H#hist.stats#state.sum || H <- Hists]),
+        lists:sum([H#hist.stats#state.sum2 || H <- Hists])),
+
+    Hist = new(MinVal, MaxVal, NumBins),
+    Hist#hist { n = Stats#state.n,
+                bins = gb_trees:from_orddict(Dict),
+                stats = Stats }.
+    
 
 %% ===================================================================
 %% Internal functions
@@ -181,6 +218,15 @@ bin_count(Bin, Hist) ->
 simple_test() ->
     %% Pre-calculated tests
     [7,0] = counts(update_all([10,10,10,10,10,10,14], new(10,18,2))).
+
+merge_test() ->
+    Hist1 = update_all([1, 1, 15], new(0,20,4)),
+    Hist2 = update_all([6, 15, 16], new(0,20,4)),
+    Hist = merge([Hist1, Hist2]),
+    [2, 1, 2, 1] = counts(Hist),
+    6 = Hist#hist.n,
+    {state, 6, 1, 16, 54, 744} = Hist#hist.stats.
+
 
 -ifdef(EQC).
 
