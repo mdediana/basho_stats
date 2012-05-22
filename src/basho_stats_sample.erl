@@ -22,12 +22,12 @@
 -module(basho_stats_sample).
 
 -export([new/0,
-         new/5,
          update/2, update_all/2,
          count/1,
          min/1, mean/1, max/1,
          variance/1, sdev/1,
-         summary/1]).
+         summary/1,
+         merge/1]).
 
 -include("stats.hrl").
 
@@ -48,13 +48,6 @@
 
 new() ->
     #state{}.
-
-new(N, Min, Max, Sum, Sum2) ->
-    #state { n = N,
-             min = Min,
-             max = Max,
-             sum = Sum,
-             sum2 = Sum2 }.
 
 update(Value, State) ->
     State#state {
@@ -101,6 +94,14 @@ sdev(State) ->
 summary(State) ->
     {min(State), mean(State), max(State), variance(State), sdev(State)}.
             
+merge(States) ->
+    State = basho_stats_sample:new(),
+    State#state {
+        n    = lists:sum([S#state.n || S <- States]),
+        min  = lists:min([S#state.min || S <- States]),
+        max  = lists:max([S#state.max || S <- States]),
+        sum  = lists:sum([S#state.sum || S <- States]),
+        sum2 = lists:sum([S#state.sum2 || S <- States])}.
 
 %% ===================================================================
 %% Internal functions

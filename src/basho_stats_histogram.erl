@@ -44,13 +44,6 @@
                 capacity,
                 stats }).
 
-%% copy and pasted from basho_stats_sample
--record(state, { n = 0,
-                 min = 'NaN',
-                 max = 'NaN',
-                 sum  = 0,
-                 sum2 = 0 }).
-
 %% ===================================================================
 %% Public API
 %% ===================================================================
@@ -140,27 +133,22 @@ summary_stats(Hist) ->
 %% NumBins, unexpected results may happen otherwise.
 %% 
 merge(Hists) ->
-    [Hist1|HistRest] = Hists,
-    MinVal = Hist1#hist.min,
-    MaxVal = Hist1#hist.max,
-    NumBins = Hist1#hist.capacity,
+    [HH|HT] = Hists,
+    MinVal = HH#hist.min,
+    MaxVal = HH#hist.max,
+    NumBins = HH#hist.capacity,
 
-    CountsSum =
+    MergedCounts =
         lists:foldl(fun(H, Cs) ->
                         lists:zipwith(fun(X, Y) -> X + Y end, counts(H), Cs)
-                    end, counts(Hist1), HistRest),
-    Dict = lists:zip(lists:seq(0, NumBins - 1), CountsSum),
+                    end, counts(HH), HT),
+    BinsAsDict = lists:zip(lists:seq(0, NumBins - 1), MergedCounts),
 
-    Stats = basho_stats_sample:new(
-        lists:sum([H#hist.stats#state.n || H <- Hists]),
-        lists:min([H#hist.stats#state.min || H <- Hists]),
-        lists:max([H#hist.stats#state.max || H <- Hists]),
-        lists:sum([H#hist.stats#state.sum || H <- Hists]),
-        lists:sum([H#hist.stats#state.sum2 || H <- Hists])),
+    Stats = basho_stats_sample:merge([H#hist.stats || H <- Hists]),
 
     Hist = new(MinVal, MaxVal, NumBins),
-    Hist#hist { n = Stats#state.n,
-                bins = gb_trees:from_orddict(Dict),
+    Hist#hist { n = basho_stats_sample:count(Stats),
+                bins = gb_trees:from_orddict(BinsAsDict),
                 stats = Stats }.
     
 
@@ -225,8 +213,7 @@ merge_test() ->
     Hist = merge([Hist1, Hist2]),
     [2, 1, 2, 1] = counts(Hist),
     6 = Hist#hist.n,
-    {state, 6, 1, 16, 54, 744} = Hist#hist.stats.
-
+    {1, 9.0, 16, 51.6, 7.183313998427188} = summary_stats(Hist).
 
 -ifdef(EQC).
 
